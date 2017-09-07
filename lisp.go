@@ -27,6 +27,17 @@ type value struct {
 	symbol []rune
 	ast *tree
 }
+
+type kv struct {
+  key []rune
+  value obj
+}
+
+type env struct {
+  vals []kv
+  prev *env
+}
+
 type tree struct {
 	val value
 	done_val bool
@@ -110,7 +121,7 @@ func parse(input []rune, n int, ast *tree) int{
 			ast.done_val = true
 			if(ast.parent != nil){
 				return parse(input, n+1, ast.parent)
-			} 
+			}
 			break
 		case " ":
 			if !ast.done_val {
@@ -118,7 +129,7 @@ func parse(input []rune, n int, ast *tree) int{
 			}
 
 			ast.next = &tree {value { make([]rune, 0), nil } ,false, nil, ast.parent}
-			
+
 			if input[n+1] != ' ' {
 				// get next argument
 				parse(input, n+1, ast.next)
@@ -152,7 +163,7 @@ func print_tree(ast *tree){
 		fmt.Printf(" -> ")
 		print_tree(ast.next)
 	}
-	
+
 }
 
 func addfunc(ast *tree) (value, error) {
@@ -177,15 +188,10 @@ func addfunc(ast *tree) (value, error) {
 	}
 }
 
-func eval(ast *tree){
+func eval(ast *tree, env *ev){
 	if ast.val.ast == nil {
-		switch string(ast.val.symbol) {
-		case "+": return addfunc(ast.next)
-			break;
-		case "-": return subfunc(ast.next)
-			break;
-		default: fmt.Printf("unrecognised function: %s\n" % ast.val.symbol)
-		}
+		val = /* search ast.val.symbol in the env */
+		val.func (tree.next, env { .prev = ev })
 	} else {
 		eval(ast.val.ast)
 	}
