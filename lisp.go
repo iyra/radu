@@ -155,16 +155,26 @@ func print_tree(ast *tree){
 	
 }
 
-func addfunc(ast *tree) {
-	if len(ast.value.symbol) == 0 || len(ast.next.value.symbol) == 0:
-	return error_least2_args
-
-	
-	a, err := strconv.Atoi(string(ast.value.symbol))
-	if err != nil {
-		return error_noconv_int
+func addfunc(ast *tree) (value, error) {
+	if len(ast.value.symbol) == 0 || len(ast.next.value.symbol) == 0 {
+		return error_least2_args
 	}
-	b, err := strconv.Atoi(string(ast.value.symbol))
+	nlist := make([]inteface{}, 0)
+	if v,err := get_number(ast.value.symbol); err == nil {
+		nlist = append(nlist, v)
+	} else {
+		return value { make([]rune, 0), nil }, err
+	}
+
+	if v,err = get_number(ast.next.value.symbol); err == nil {
+		nlist = append(nlist, v)
+	} else {
+		return value { make([]rune, 0), nil }, err
+	}
+
+	for i,e := range nlist {
+		???
+	}
 }
 
 func eval(ast *tree){
