@@ -1,6 +1,27 @@
 package main
 
 import "fmt"
+import "strconv"
+import "errors"
+import "unicode"
+
+const (
+	error_noconv_int = iota
+	error_least2_args = iota
+	num_float = iota
+	num_int = iota
+	num_undef = iota
+	symbol_type = "sym"
+	int_type = "int"
+	float_type = "float"
+	number_type = "number"
+)
+
+type number_value struct {
+	number_type int
+	floatval float64
+	intval int64
+}
 
 type value struct {
 	symbol []rune
@@ -11,6 +32,56 @@ type tree struct {
 	done_val bool
 	next *tree
 	parent *tree
+}
+
+type convError struct {
+	from string
+	to string
+}
+
+func (e *convError) Error() string {
+    return fmt.Sprintf("convError: Can't convert %s to %s", e.from, e.to)
+}
+
+func show_value(valtype string, val string) string {
+	if(val != "") {
+		return fmt.Sprintf("[%s %s]", valtype, val)
+	} else {
+		return fmt.Sprintf("[%s]", valtype)
+	}
+}
+
+func all_digits_p(symbol rune) bool {
+	for i,e := range symbol {
+		if !unicode.IsDigit(e) {
+			return false
+		}
+	}
+	return true
+}
+
+func get_number(symbol []rune) (number_value, error) {
+	// integer
+	if all_digits_p(symbol) {
+		if r, err := strconv.ParseInt(string(symbol), 64); err == nil {
+			return number_value { num_int, 0, r }, nil
+		} else {
+			return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(int_type, "")}
+		}
+	}
+
+	// float
+	if strings.Contains(string(symbol), ".")
+	&& strings.Count(string(symbol), ".") == 1 {
+		// contains a single .
+		if r, err := strconv.ParseFloat(string(symbol), 64); err == nil {
+			return number_value { num_float, r, 0 }, nil
+		} else {
+			return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(float_type, "")}
+		}
+	}
+
+	return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(number_type, "")}
 }
 
 func parse(input []rune, n int, ast *tree) int{
@@ -69,7 +140,6 @@ func parse(input []rune, n int, ast *tree) int{
 }
 
 func print_tree(ast *tree){
-	
 	if ast.val.ast == nil {
 		fmt.Printf(string(ast.val.symbol))
 		//fmt.Printf("[%p]", ast.parent)
@@ -83,6 +153,32 @@ func print_tree(ast *tree){
 		print_tree(ast.next)
 	}
 	
+}
+
+func addfunc(ast *tree) {
+	if len(ast.value.symbol) == 0 || len(ast.next.value.symbol) == 0:
+	return error_least2_args
+
+	
+	a, err := strconv.Atoi(string(ast.value.symbol))
+	if err != nil {
+		return error_noconv_int
+	}
+	b, err := strconv.Atoi(string(ast.value.symbol))
+}
+
+func eval(ast *tree){
+	if ast.val.ast == nil {
+		switch string(ast.val.symbol) {
+		case "+": return addfunc(ast.next)
+			break;
+		case "-": return subfunc(ast.next)
+			break;
+		default: fmt.Printf("unrecognised function: %s\n" % ast.val.symbol)
+		}
+	} else {
+		eval(ast.val.ast)
+	}
 }
 
 func main() {
