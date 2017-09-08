@@ -4,6 +4,7 @@ import "fmt"
 import "strconv"
 import "errors"
 import "unicode"
+import "strings"
 
 const (
 	error_noconv_int  = iota
@@ -37,7 +38,7 @@ type tree struct {
 	parent   *tree
 }
 type env struct {
-	values map[[]rune]value
+	values map[string]value
 	prev   *env
 }
 
@@ -97,7 +98,7 @@ func parse(input []rune, n int, ast *tree) int {
 			} else {
 				if len(ast.val.symbol) == 0 {
 					// case like ((... so parse
-					ast.val.ast = &tree{value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, false, nil, ast, nil}
+					ast.val.ast = &tree{value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, false, nil, ast}
 					parse(input, n+1, ast.val.ast)
 				} else {
 					fmt.Printf("error: unexpected ( in tree value\n")
@@ -161,27 +162,55 @@ func blank_value() value {
 	return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}
 }
 
-func quotefunc(ast *tree, bindings *env) (value, err) {
-	if ast.next != nil {
-		return ast.next, nil
-	} else {
-		return blank_value(), errors.New("usage: (quote <value>)")
+func quotefunc(ast *tree, bindings *env) (value, error) {
+	if ast.next != nil && argcount(ast, 0) == 1 {
+		switch ast.next.val.valtype {
+		case t_symbol:
+			return ast.next.val, nil
+			break
+		case t_tree:
+			return ast.next.val, nil
+			break
+		case t_number_float, t_number_int, t_number_rational:
+			return ast.next.val, nil
+		}
 	}
+	return blank_value(), errors.New("usage: (quote <value>)")
+}
+
+//func listeval(ast *tree, bindings *env) (value, error) {
+
+//}
+
+func listfunc(ast *tree, bindings *env, orig *tree) (value, error) {
+	/* (list x y z) => (eval(x) -> eval(y) -> eval(z)) */
+	if ast.next == nil {
+		return orig.val, nil
+	}
+	var err error
+	ast.next.val, err = eval(ast.next, bindings)
+	return listfunc(ast.next, bindings, orig)
+}
+
+func consfunc(ast *tree, bindings *env, orig *tree) (value, error) {
+	return blank_value(), nil
 }
 
 func lambdafunc(ast *tree, bindings *env) (value, error) {
-
+	/* ((lambda (x) (fn x)) y)
+	((lambda -> (x) -> (fn -> x)) -> y)
+	*/
+	return blank_value(), nil
 }
 
 func argcount(ast *tree, total int) int {
 	if ast.next != nil {
-		argcount(ast, total+1)
-	} else {
-		return total
+		return argcount(ast, total+1)
 	}
+	return total
 }
 
-func nth_rune(str string, n int) (rune, err) {
+func nth_rune(str string, n int) (rune, error) {
 	for i, v := range str {
 		if i == n {
 			return v, nil
@@ -222,39 +251,40 @@ func conv_float(symbol []rune) (float64, error) {
 }
 
 func bound(symbol []rune, bindings *env) (value, error) {
-	if val, ok := bindings.values[symbol]; ok {
+	if val, ok := bindings.values[string(symbol)]; ok {
 		return val, nil
 	}
-	if env.prev != nil {
-		return bound(symbol, env.prev), nil
+	if bindings.prev != nil {
+		return bound(symbol, bindings.prev)
 	} else {
 		return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}},
-			errors.New(fmt.sprintf("error: symbol %s not found in environment." % string(symbol)))
+			errors.New(fmt.Sprintf("error: symbol %s not found in environment.", string(symbol)))
 	}
 }
 
-func eval(ast *tree, bindings *env) (value, err) {
+func eval(ast *tree, bindings *env) (value, error) {
 	if ast.val.ast == nil {
 		if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
 			// symbol found
 		} else {
-			switch sym := ast.val.symbol; sym {
+			rsym := ast.val.symbol
+			switch sym := string(rsym); sym {
 			case "quote":
-				return quotefunc(ast)
+				return quotefunc(ast, bindings)
 				break
 			case "cons":
-				return consfunc(ast)
+				return consfunc(ast, bindings)
 				break
 			default:
-				if is_integer(sym) {
-					if v, err := conv_integer(sym); err == nil {
+				if is_integer(rsym) {
+					if v, err := conv_integer(rsym); err == nil {
 						return value{t_number_int, make([]rune, 0), nil, number_value{0, v}}, nil
 					} else {
 						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
 					}
 				}
-				if is_float(sym) {
-					if v, err := conv_float(sym); err == nil {
+				if is_float(rsym) {
+					if v, err := conv_float(rsym); err == nil {
 						return value{t_number_float, make([]rune, 0), nil, number_value{v, 0}}, nil
 					} else {
 						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
@@ -265,12 +295,12 @@ func eval(ast *tree, bindings *env) (value, err) {
 			}
 		}
 	} else {
-		eval(ast.val.ast)
+		eval(ast.val.ast, bindings)
 	}
 }
 
 func main() {
-	my_tree := tree{t_symbol, value{make([]rune, 0), nil, number_value{0, 0}},
+	my_tree := tree{value{t_symbol, make([]rune, 0), nil, number_value{0, 0}},
 		false,
 		nil, nil}
 	parse([]rune("((lambda (x) (+ x 2)) 5) (greek 'anna) 1 5"), 0, &my_tree)
