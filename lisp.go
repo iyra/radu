@@ -27,6 +27,7 @@ type value struct {
 	symbol []rune
 	ast *tree
 }
+
 type tree struct {
 	val value
 	done_val bool
@@ -114,15 +115,15 @@ func parse(input []rune, n int, ast *tree) int{
 			ast.done_val = true
 			if(ast.parent != nil){
 				return parse(input, n+1, ast.parent)
-			} 
+			}
 			break
 		case " ":
 			if !ast.done_val {
 				ast.done_val = true
 			}
 
-			ast.next = &tree {value { make([]rune, 0), nil } ,false, nil, ast.parent, nil}
-			
+
+			ast.next = &tree {value { make([]rune, 0), nil } ,false, nil, ast.parent}
 			if input[n+1] != ' ' {
 				// get next argument
 				parse(input, n+1, ast.next)
@@ -156,7 +157,7 @@ func print_tree(ast *tree){
 		fmt.Printf(" -> ")
 		print_tree(ast.next)
 	}
-	
+
 }
 
 /*
@@ -185,7 +186,7 @@ func bound(symbol []rune, bindings *env) (value, error) {
 		return value { make([]rune, 0), nil }, errors.New(fmt.sprintf("error: symbol %s not found in environment." % string(symbol))
 }
 
-func eval(ast *tree, bindings *env) value, err {
+		func eval(ast *tree, bindings *env) value, err {
 	if ast.val.ast == nil {
 		if res,finderr := bound(ast.val.symbol, bindings); finderr == nil {
 			// symbol found
@@ -202,6 +203,7 @@ func eval(ast *tree, bindings *env) value, err {
 				return { make([]rune, 0), nil }, finderr
 			}
 		}
+
 	} else {
 		eval(ast.val.ast)
 	}
