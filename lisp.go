@@ -17,6 +17,7 @@ const (
 	t_number_float    = iota
 	t_number_int      = iota
 	t_number_rational = iota
+	t_head_symbol     = iota
 )
 
 type number_value struct {
@@ -98,7 +99,7 @@ func parse(input []rune, n int, ast *tree) int {
 			} else {
 				if len(ast.val.symbol) == 0 {
 					// case like ((... so parse
-					ast.val.ast = &tree{value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, false, nil, ast}
+					ast.val.ast = &tree{value{t_head_symbol, make([]rune, 0), nil, number_value{0, 0}}, false, nil, ast}
 					parse(input, n+1, ast.val.ast)
 				} else {
 					fmt.Printf("error: unexpected ( in tree value\n")
@@ -141,6 +142,7 @@ func print_tree(ast *tree) {
 	if ast.val.ast == nil {
 		fmt.Printf(string(ast.val.symbol))
 		//fmt.Printf("[%p]", ast.parent)
+		fmt.Printf("[%d]", ast.val.valtype)
 	} else {
 		fmt.Printf("(")
 		print_tree(ast.val.ast)
@@ -189,6 +191,9 @@ func listfunc(ast *tree, bindings *env, orig *tree) (value, error) {
 	}
 	var err error
 	ast.next.val, err = eval(ast.next, bindings)
+	if err != nil {
+		return blank_value(), err
+	}
 	return listfunc(ast.next, bindings, orig)
 }
 
@@ -237,7 +242,7 @@ func conv_integer(symbol []rune) (int64, error) {
 
 func is_float(symbol []rune) bool {
 	if strings.Count(string(symbol), ".") == 1 {
-		for i, e := range symbol {
+		for _, e := range symbol {
 			if !unicode.IsDigit(e) && e != '.' {
 				return false
 			}
@@ -262,47 +267,99 @@ func bound(symbol []rune, bindings *env) (value, error) {
 	}
 }
 
+/*func eval(ast *tree, bindings *env) (value, error) {
+	return blank_value(), nil
+}*/
+
 func eval(ast *tree, bindings *env) (value, error) {
-	if ast.val.ast == nil {
-		if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
-			// symbol found
-		} else {
-			rsym := ast.val.symbol
-			switch sym := string(rsym); sym {
-			case "quote":
-				return quotefunc(ast, bindings)
-				break
-			case "cons":
-				return consfunc(ast, bindings)
-				break
-			default:
-				if is_integer(rsym) {
-					if v, err := conv_integer(rsym); err == nil {
-						return value{t_number_int, make([]rune, 0), nil, number_value{0, v}}, nil
-					} else {
-						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
-					}
-				}
-				if is_float(rsym) {
-					if v, err := conv_float(rsym); err == nil {
-						return value{t_number_float, make([]rune, 0), nil, number_value{v, 0}}, nil
-					} else {
-						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
-					}
-				}
-				// ...
-				return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, finderr
+	switch ast.val.valtype {
+	case t_head_symbol:
+		// like (x y z), we are talking about x
+		// apply to args
+		switch sym := string(ast.val.symbol); sym {
+		case "quote":
+			return quotefunc(ast, bindings)
+		case "cons":
+			return consfunc(ast, bindings, ast)
+		case "list":
+			return listfunc(ast, bindings, ast)
+		default:
+			if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
+				return res, nil
+			} else {
+				return blank_value(), finderr // couldn't find the x in (x y)
 			}
 		}
-	} else {
-		eval(ast.val.ast, bindings)
+	case t_symbol:
+		rsym := ast.val.symbol
+		// like the y or z in (x y z)
+		// or any other symbol sent to evaluate
+		//symbols evaluate to numbers if they are numbers
+		if is_integer(rsym) {
+			if v, err := conv_integer(rsym); err == nil {
+				return value{t_number_int, make([]rune, 0), nil, number_value{0, v}}, nil
+			} else {
+				return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
+			}
+		}
+		if is_float(rsym) {
+			if v, err := conv_float(rsym); err == nil {
+				return value{t_number_float, make([]rune, 0), nil, number_value{v, 0}}, nil
+			} else {
+				return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
+			}
+		}
+	case t_number_float, t_number_int, t_number_rational:
+		return ast.val, nil
 	}
+	return eval(ast.val.ast.next, bindings)
 }
+
+// func eval(ast *tree, bindings *env) (value, error) {
+// 	if ast.val.ast == nil {
+// 		if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
+// 			// symbol found
+// 		} else {
+// 			rsym := ast.val.symbol
+// 			switch sym := string(rsym); sym {
+// 			case "quote":
+// 				return quotefunc(ast, bindings)
+// 				break
+// 			case "cons":
+// 				return consfunc(ast, bindings)
+// 				break
+//             case "list":
+//                 return listfunc(ast, bindings, ast)
+//                 break
+// 			default:
+// 				if is_integer(rsym) {
+// 					if v, err := conv_integer(rsym); err == nil {
+// 						return value{t_number_int, make([]rune, 0), nil, number_value{0, v}}, nil
+// 					} else {
+// 						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
+// 					}
+// 				}
+// 				if is_float(rsym) {
+// 					if v, err := conv_float(rsym); err == nil {
+// 						return value{t_number_float, make([]rune, 0), nil, number_value{v, 0}}, nil
+// 					} else {
+// 						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
+// 					}
+// 				}
+// 				// ...
+// 				return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, finderr
+// 			}
+// 		}
+// 	}
+// 	return eval(ast.val.ast, bindings)
+// }
 
 func main() {
 	my_tree := tree{value{t_symbol, make([]rune, 0), nil, number_value{0, 0}},
 		false,
 		nil, nil}
-	parse([]rune("((lambda (x) (+ x 2)) 5) (greek 'anna) 1 5"), 0, &my_tree)
+	program := "((lambda (x) (+ x 2)) 5) (greek 'anna) 1 5"
+	fmt.Println(program)
+	parse([]rune(program), 0, &my_tree)
 	print_tree(&my_tree)
 }
