@@ -157,15 +157,28 @@ func print_tree(ast *tree) {
 ((x) y)
 (p z)*/
 
-func quotefunc(ast *tree) value {
-	if ast.val.ast == nil {
-		// quoting a symbol like (quote x)
-		return ast.symbol
+func blank_value() value {
+	return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}
+}
+
+func quotefunc(ast *tree, bindings *env) (value, err) {
+	if ast.next != nil {
+		return ast.next, nil
 	} else {
-		// quoting an ast like (quote (+ 3 2))
-		return ast.next
+		return blank_value(), errors.New("usage: (quote <value>)")
 	}
-	return value{t_symbol, make([]rune, 0), ast, number_value{0, 0}}
+}
+
+func lambdafunc(ast *tree, bindings *env) (value, error) {
+
+}
+
+func argcount(ast *tree, total int) int {
+	if ast.next != nil {
+		argcount(ast, total+1)
+	} else {
+		return total
+	}
 }
 
 func nth_rune(str string, n int) (rune, err) {
@@ -227,18 +240,25 @@ func eval(ast *tree, bindings *env) (value, err) {
 		} else {
 			switch sym := ast.val.symbol; sym {
 			case "quote":
-				return quotefunc(ast.next)
+				return quotefunc(ast)
+				break
+			case "cons":
+				return consfunc(ast)
 				break
 			default:
 				if is_integer(sym) {
 					if v, err := conv_integer(sym); err == nil {
-						return value{t_number_int, make([]rune, 0), nil, number_value{}}, nil
+						return value{t_number_int, make([]rune, 0), nil, number_value{0, v}}, nil
 					} else {
 						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
 					}
 				}
 				if is_float(sym) {
-
+					if v, err := conv_float(sym); err == nil {
+						return value{t_number_float, make([]rune, 0), nil, number_value{v, 0}}, nil
+					} else {
+						return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
+					}
 				}
 				// ...
 				return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, finderr
