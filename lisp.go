@@ -33,6 +33,10 @@ type tree struct {
 	next *tree
 	parent *tree
 }
+type env struct {
+	values map[[]rune]value
+	prev *env
+}
 
 type convError struct {
 	from string
@@ -60,29 +64,29 @@ func all_digits_p(symbol rune) bool {
 	return true
 }
 
-func get_number(symbol []rune) (number_value, error) {
-	// integer
-	if all_digits_p(symbol) {
-		if r, err := strconv.ParseInt(string(symbol), 64); err == nil {
-			return number_value { num_int, 0, r }, nil
-		} else {
-			return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(int_type, "")}
-		}
-	}
+// func get_number(symbol []rune) (number_value, error) {
+// 	// integer
+// 	if all_digits_p(symbol) {
+// 		if r, err := strconv.ParseInt(string(symbol), 64); err == nil {
+// 			return number_value { num_int, 0, r }, nil
+// 		} else {
+// 			return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(int_type, "")}
+// 		}
+// 	}
 
-	// float
-	if strings.Contains(string(symbol), ".")
-	&& strings.Count(string(symbol), ".") == 1 {
-		// contains a single .
-		if r, err := strconv.ParseFloat(string(symbol), 64); err == nil {
-			return number_value { num_float, r, 0 }, nil
-		} else {
-			return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(float_type, "")}
-		}
-	}
+// 	// float
+// 	if strings.Contains(string(symbol), ".")
+// 	&& strings.Count(string(symbol), ".") == 1 {
+// 		// contains a single .
+// 		if r, err := strconv.ParseFloat(string(symbol), 64); err == nil {
+// 			return number_value { num_float, r, 0 }, nil
+// 		} else {
+// 			return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(float_type, "")}
+// 		}
+// 	}
 
-	return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(number_type, "")}
-}
+// 	return number_value { num_undef, 0, 0 }, &convError{show_value(symbol_type, string(symbol)), show_value(number_type, "")}
+// }
 
 func parse(input []rune, n int, ast *tree) int{
 	if n == len(input) {
@@ -99,7 +103,7 @@ func parse(input []rune, n int, ast *tree) int{
 			} else {
 				if len(ast.val.symbol) == 0 {
 					// case like ((... so parse
-					ast.val.ast = &tree {value { make([]rune, 0), nil }, false, nil, ast};
+					ast.val.ast = &tree {value { make([]rune, 0), nil }, false, nil, ast, nil};
 					parse(input, n+1, ast.val.ast)
 				} else {
 					fmt.Printf("error: unexpected ( in tree value\n")
@@ -117,7 +121,7 @@ func parse(input []rune, n int, ast *tree) int{
 				ast.done_val = true
 			}
 
-			ast.next = &tree {value { make([]rune, 0), nil } ,false, nil, ast.parent}
+			ast.next = &tree {value { make([]rune, 0), nil } ,false, nil, ast.parent, nil}
 			
 			if input[n+1] != ' ' {
 				// get next argument
@@ -155,36 +159,48 @@ func print_tree(ast *tree){
 	
 }
 
-func addfunc(ast *tree) (value, error) {
-	if len(ast.value.symbol) == 0 || len(ast.next.value.symbol) == 0 {
-		return error_least2_args
-	}
-	nlist := make([]inteface{}, 0)
-	if v,err := get_number(ast.value.symbol); err == nil {
-		nlist = append(nlist, v)
-	} else {
-		return value { make([]rune, 0), nil }, err
-	}
+/*
+(+ 3 2)
+((x) y)
+(p z)*/
 
-	if v,err = get_number(ast.next.value.symbol); err == nil {
-		nlist = append(nlist, v)
+func quotefunc(ast *tree) value {
+	if ast.val.ast == nil {
+		// quoting a symbol like (quote x)
+		return ast.symbol
 	} else {
-		return value { make([]rune, 0), nil }, err
+		// quoting an ast like (quote (+ 3 2))
+		return ast.next
 	}
-
-	for i,e := range nlist {
-		???
-	}
+	return value { make([]rune, 0), ast }
 }
 
-func eval(ast *tree){
+func bound(symbol []rune, bindings *env) (value, error) {
+	if val, ok := bindings.values[symbol]; ok {
+		return val, nil
+	}
+	if env.prev != nil {
+		return bound(symbol, env.prev), nil
+	} else {
+		return value { make([]rune, 0), nil }, errors.New(fmt.sprintf("error: symbol %s not found in environment." % string(symbol))
+}
+
+func eval(ast *tree, bindings *env) value, err {
 	if ast.val.ast == nil {
-		switch string(ast.val.symbol) {
-		case "+": return addfunc(ast.next)
-			break;
-		case "-": return subfunc(ast.next)
-			break;
-		default: fmt.Printf("unrecognised function: %s\n" % ast.val.symbol)
+		if res,finderr := bound(ast.val.symbol, bindings); finderr == nil {
+			// symbol found
+		} else {
+			switch sym := string(ast.val.symbol); sym {
+			case "quote": return quotefunc(ast.next)
+				break
+			default:
+				if is_integer(sym){
+				}
+				if is_float(sym){
+				}
+				// ...
+				return { make([]rune, 0), nil }, finderr
+			}
 		}
 	} else {
 		eval(ast.val.ast)
