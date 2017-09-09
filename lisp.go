@@ -34,6 +34,19 @@ type number_value struct {
 	intval   int64
 }
 
+/* (lambda (x y) (+ x y))
+args = ["x", "y"]
+ast = (+ -> x -> y)
+
+((lambda (x y) (+ x y)) 2 1)
+eval(ast{(+ -> x -> y)} env{x: 2, y: 1}) => 3
+*/
+
+type function_value struct {
+	symbol [][]args
+	ast    *action
+}
+
 type value struct {
 	valtype int
 	symbol  []rune
@@ -193,6 +206,7 @@ func lambdafunc(ast *tree, bindings *env) (value, error) {
 	/* ((lambda (x) (fn x)) y)
 	((lambda -> (x) -> (fn -> x)) -> y)
 	*/
+	print_tree(ast)
 	return blank_value(), nil
 }
 
@@ -333,9 +347,11 @@ func succfunc(ast *tree, bindings *env) (value, error) {
 
 func eval(ast *tree, bindings *env) (value, error) {
 	fmt.Println("valtype is ", typenames[ast.val.valtype])
+	if ast.parent == nil {
+		fmt.Printf("parent is nil")
+	}
 	switch ast.val.valtype {
 	case t_head_symbol:
-
 		// like (x y z), we are talking about x
 		// apply to args
 		switch sym := string(ast.val.symbol); sym {
@@ -350,6 +366,8 @@ func eval(ast *tree, bindings *env) (value, error) {
 			return succfunc(ast, bindings)
 		case "+":
 			return addfunc(ast, bindings)
+		case "lambda":
+			return lambdafunc(ast, bindings)
 		default:
 			if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
 				return res, nil
@@ -378,10 +396,21 @@ func eval(ast *tree, bindings *env) (value, error) {
 				return value{t_symbol, make([]rune, 0), nil, number_value{0, 0}}, err
 			}
 		}
+
+		// it's not a number so just return it
+		return ast.val, nil
 	case t_number_float, t_number_int, t_number_rational:
 		return ast.val, nil
+	case t_tree:
+		return eval(ast.val.ast, bindings)
 	}
-	return eval(ast.val.ast, bindings)
+	/*if ast.parent == nil && ast.next != nil {
+		fmt.Println("no parent")
+		eval(ast.next, bindings)
+	}*/
+	//return eval(ast.val.ast, bindings)
+	fmt.Println("hi")
+	return eval(ast.next, bindings)
 }
 
 func print_value(v value) {
@@ -401,7 +430,7 @@ func main() {
 	my_tree := tree{value{t_symbol, make([]rune, 0), nil, number_value{0, 0}},
 		false,
 		nil, nil}
-	program := "(+ 1 2 4.0) (succ 3)"
+	program := "((lambda (x) (+ x 5)) 3)"
 	fmt.Println(program)
 	parse([]rune(program), 0, &my_tree)
 	print_tree(&my_tree)
