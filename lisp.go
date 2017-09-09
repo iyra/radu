@@ -317,6 +317,7 @@ func conv_float(symbol []rune) (float64, error) {
 }
 
 func bound(symbol []rune, bindings *env) (value, error) {
+	fmt.Println(bindings.values)
 	if val, ok := bindings.values[string(symbol)]; ok {
 		return val, nil
 	}
@@ -397,9 +398,36 @@ func succfunc(ast *tree, bindings *env) (value, error) {
 	}
 }
 
-func performfunc(v value, bindings *env) (value, error) {
+func get_subjects(subject *tree, results []value, bindings *env) ([]value, error) {
+	if g, err := eval2(subject, bindings); err == nil {
+		results = append(results, g)
+	} else {
+		return make([]value, 0), err
+	}
+	if subject.next != nil {
+		return get_subjects(subject.next, results, bindings)
+	}
+	return results, nil
+}
 
-	return blank_value(), nil
+func performfunc(v value, bindings *env, subject *tree) (value, error) {
+	print_value(v)
+
+	/* set the bindings inside our lambda to be the same as the outside ones
+	but overwrite the ones named in the varlist */
+	local_bindings := bindings.values
+	if g, err := get_subjects(subject, make([]value, 0), bindings); err == nil && len(g) == len(v.function.args) {
+		for i, e := range v.function.args {
+			local_bindings[string(e)] = g[i]
+		}
+	} else {
+		if err != nil {
+			return blank_value(), err
+		}
+		fmt.Printf("len get_subjects = %d, len func.args = %d\n", len(g), len(v.function.args))
+		return blank_value(), errors.New("error: mismatched arg length for lambda")
+	}
+	return eval2(v.function.action, &env{local_bindings, nil})
 }
 
 /*func eval(ast *tree, bindings *env) (value, error) {
@@ -452,8 +480,9 @@ func eval2(ast *tree, bindings *env) (value, error) {
 			}
 		}
 		if g, err := eval2(ast.val.ast, bindings); err == nil && g.valtype == t_function {
-			fmt.Println("performing")
-			return performfunc(g, bindings)
+			fmt.Println("performing -- ")
+			print_tree(ast.val.ast.next)
+			return performfunc(g, bindings, ast.val.ast.next)
 		}
 		return blank_value(), errors.New("usage: (x [a b c ...]) where x is a builtin or lambda")
 	}
@@ -479,6 +508,10 @@ func eval2(ast *tree, bindings *env) (value, error) {
 			} else {
 				return blank_value(), err
 			}
+		}
+
+		if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
+			return res, nil
 		}
 
 		// it's not a number so just return it
@@ -586,7 +619,7 @@ func print_value(v value) {
 
 func main() {
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
-	program := "((lambda (x) (+ x 2)) 3)"
+	program := "((lambda (x y) (+ x y 13)) 19 3)"
 	fmt.Println(program)
 	parse([]rune(program), 0, &my_tree)
 	//print_tree(&my_tree)
