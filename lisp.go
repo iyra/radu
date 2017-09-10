@@ -664,13 +664,26 @@ func eqfunc(ast *tree, bindings *env) (value, error) {
 	}
 }
 
+/* perhaps eval can be improved to evaluate a sequence of trees
+like (x 1) (b 2) because at the moment it only evaluates (x 1) and then stops.
+
+try to evaluate each one, but rather than returning the result, we see if there is
+another tree following the thing we just evaluated
+if there is not then we just return it; if there is then we eval the next tree
+
+e.g (define x 3)
+define is evaluated, ast.next is checked but it's nil, so just return the result of define
+e.g (define x 3) (print x)
+define is evaluated, ast.next is seen to contain another tree, so evaluate that
+*/
+
 func eval2(ast *tree, bindings *env) (value, error) {
 	fmt.Println("CALL")
 	/* (x[*] y[*] z[*] ...)[tree]
 		x must either be (1) builtin [val symbol] or (2) eval to a [val function_value]
 
 	s
-	s must either be (1) arbitrary [val symbol] (2) eval to a number (3) be a number
+	s must either be (1) arbitrary but not tree [val symbol] (2) eval to a number (3) be a number
 	*/
 	if ast.val.valtype == t_tree {
 		print_tree(ast)
@@ -861,7 +874,7 @@ func print_value(v value) {
 
 func main() {
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
-	program := "(eq (list 1 2) (list 1 2))"
+	program := "(list 1 2)"
 	fmt.Println(program)
 	parse([]rune(program), 0, &my_tree)
 	//print_tree(&my_tree)
