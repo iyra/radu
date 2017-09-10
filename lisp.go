@@ -387,6 +387,7 @@ func addfunc(ast *tree, bindings *env) (value, error) {
 				total += float64(e.number.intval)
 			}
 		}
+		fmt.Printf("%f", total)
 		return value_number_float_init(total), nil
 	} else {
 		return blank_value(), err
@@ -560,7 +561,107 @@ func letfunc(ast *tree, bindings *env) (value, error) {
 	} else {
 		return blank_value(), e
 	}
+}
 
+func prognfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (progn val1[ val2 val3 ...])")
+	}
+	r, e := eval2(ast.next, bindings)
+	if e == nil {
+		print_value(r)
+	} else {
+		return blank_value(), e
+	}
+	if ast.next.next != nil {
+		fmt.Println("there is next")
+		prognfunc(ast.next, bindings)
+	}
+	return blank_value(), nil
+}
+
+func truesym() value {
+	return value_symbol_init([]rune("#t"))
+}
+
+func falsesym() value {
+	return value_symbol_init([]rune("#f"))
+}
+
+func equaltrees(ast1 *tree, ast2 *tree, bindings *env) (bool, error) {
+	if ast1.next == nil && ast2.next == nil {
+		if v1, e1 := eval2(ast1, bindings); e1 == nil {
+			if v2, e2 := eval2(ast2, bindings); e2 == nil {
+				return equalvals(v1, v2, bindings)
+			} else {
+				return false, e2
+			}
+		} else {
+			return false, e1
+		}
+	}
+	if ast1.next != nil && ast2.next != nil {
+		if v1, e1 := eval2(ast1.next, bindings); e1 == nil {
+			if v2, e2 := eval2(ast2.next, bindings); e2 == nil {
+				if g, e3 := equalvals(v1, v2, bindings); e3 == nil && g {
+					return equaltrees(ast1.next, ast2.next, bindings)
+				} else {
+					return false, e3
+				}
+			} else {
+				return false, e2
+			}
+		} else {
+			return false, e1
+		}
+	}
+	return false, nil
+}
+
+func equalvals(v1 value, v2 value, bindings *env) (bool, error) {
+	if v1.valtype == v2.valtype {
+		switch v1.valtype {
+		case t_number_int:
+			if v1.number.intval == v2.number.intval {
+				return true, nil
+			}
+		case t_number_float:
+			fmt.Println(v1.valtype, v2.valtype)
+			if v1.number.floatval == v2.number.floatval {
+				return true, nil
+			}
+		case t_symbol, t_head_symbol:
+			for i, r := range v1.symbol {
+				if r == v2.symbol[i] {
+					return true, nil
+				}
+			}
+		case t_tree:
+			return equaltrees(v1.ast, v2.ast, bindings)
+		}
+	} else {
+		return false, errors.New(fmt.Sprintf("error: different types do not equal; given: %s, %s", typenames[v1.valtype], typenames[v2.valtype]))
+	}
+	return false, nil
+}
+
+func eqfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (eq val1 val2)")
+	}
+	if v1, e1 := eval2(ast.next, bindings); e1 == nil {
+		if v2, e2 := eval2(ast.next.next, bindings); e2 == nil {
+			if g, e3 := equalvals(v1, v2, bindings); e3 == nil && g {
+				return truesym(), nil
+			} else {
+				return falsesym(), e3
+			}
+		} else {
+			return blank_value(), e2
+		}
+	} else {
+		return blank_value(), e1
+	}
 }
 
 func eval2(ast *tree, bindings *env) (value, error) {
@@ -605,6 +706,10 @@ func eval2(ast *tree, bindings *env) (value, error) {
 				return cdrfunc(ast.val.ast, bindings)
 			case "let":
 				return letfunc(ast.val.ast, bindings)
+			case "progn":
+				return prognfunc(ast.val.ast, bindings)
+			case "eq":
+				return eqfunc(ast.val.ast, bindings)
 			default:
 				fmt.Println("looking for ", string(ast.val.ast.val.symbol))
 				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
@@ -619,7 +724,9 @@ func eval2(ast *tree, bindings *env) (value, error) {
 			print_tree(ast.val.ast.next)
 			return performfunc(g, bindings, ast.val.ast.next)
 		}
-		return blank_value(), errors.New("usage: (x [a b c ...]) where x is a builtin or lambda")
+		//return blank_value(), errors.New("usage: (x [a b c ...]) where x is a builtin or lambda")
+		/* i really shouldn't be doing this, but i need it to test list equality :/ */
+		return ast.val, nil
 	}
 
 	if ast.val.valtype == t_symbol || ast.val.valtype == t_head_symbol {
@@ -754,7 +861,7 @@ func print_value(v value) {
 
 func main() {
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
-	program := "(let ((x (lambda (p z) (+ p 2 z))) (h 19)) (quote (+ (x h 4) h)))"
+	program := "(eq (list 1 2) (list 1 2))"
 	fmt.Println(program)
 	parse([]rune(program), 0, &my_tree)
 	//print_tree(&my_tree)
