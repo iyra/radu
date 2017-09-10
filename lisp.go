@@ -166,8 +166,7 @@ func parse(input []rune, n int, ast *tree) int {
 
 func print_tree(ast *tree) {
 	if ast.val.ast == nil {
-		fmt.Printf(string(ast.val.symbol))
-		//fmt.Printf("[%p]", ast.parent)
+		print_value(ast.val)
 	} else {
 		fmt.Printf("(")
 		print_tree(ast.val.ast)
@@ -192,37 +191,36 @@ func blank_value() value {
 
 func quotefunc(ast *tree, bindings *env) (value, error) {
 	if ast.next != nil {
-		// switch ast.next.val.valtype {
-		// case t_symbol:
-		// 	return &value{t_tree, make([]rune, 0), &tree{ast.next, true, nil, nil}, number_value{0, 0}}
-		// 	return ast.next.val, nil
-		// 	break
-		// case t_tree:
-		// 	return ast.next.val, nil
-		// 	break
-		// case t_number_float, t_number_int, t_number_rational:
-		// 	return ast.next.val, nil
-		// }
-		return value_ast_init(ast.next), nil
+		return value_ast_init(&tree{ast.next.val, false, nil, nil}), nil
 	}
 	return blank_value(), errors.New("usage: (quote <value>)")
 }
 
-//func listeval(ast *tree, bindings *env) (value, error) {
-
-//}
-
-func listfunc(ast *tree, bindings *env, orig *tree) (value, error) {
-	/* (list x y z) => (eval(x) -> eval(y) -> eval(z)) */
-	if ast.next == nil {
-		return orig.val, nil
-	}
+func listeval(ast *tree, bindings *env, original *tree) (*tree, error) {
 	var err error
-	ast.next.val, err = eval2(ast.next, bindings)
+	ast.val, err = eval2(ast, bindings)
 	if err != nil {
-		return blank_value(), err
+		return nil, err
 	}
-	return listfunc(ast.next, bindings, orig)
+	if ast.next != nil {
+		return listeval(ast.next, bindings, original)
+	}
+	//fmt.Println("original: ")
+	return original, nil
+}
+
+func listfunc(ast *tree, bindings *env, ret *tree) (*tree, error) {
+	/* (x -> y -> z)[tree] */
+	if ast.next == nil {
+		return nil, errors.New("usage: (list x[ y z]); members will be evaluated.")
+	}
+	if r, err := listeval(ast.next, bindings, ast.next); err == nil {
+		print_value(value{t_tree, make([]rune, 0), r, number_value{0, 0}, function_value{make([][]rune, 0), nil}})
+
+		return &tree{value_ast_init(r), true, nil, nil}, nil
+	} else {
+		return nil, err
+	}
 }
 
 func consfunc(ast *tree, bindings *env, orig *tree) (value, error) {
@@ -233,17 +231,22 @@ func is_symbol(v value) bool {
 	return v.valtype == t_head_symbol || v.valtype == t_symbol
 }
 
-func lambda_arglist(ast *tree, agg [][]rune) ([][]rune, error) {
+func lambda_arglist(ast *tree, agg [][]rune, bindings *env) ([][]rune, error) {
 	print_tree(ast)
-	if !is_symbol(ast.val) {
+	p, err := eval2(ast, bindings)
+	if err != nil {
+		return make([][]rune, 0), err
+	}
+	print_value(p)
+	if !is_symbol(p) {
 		fmt.Println("prob")
 		return make([][]rune, 0), errors.New(fmt.Sprintf("error: lambda arglist must contain symbols only, given %s", typenames[ast.val.valtype]))
 	}
-	fmt.Println("PUSHING ", string(ast.val.symbol))
+	fmt.Println("PUSHING ", string(p.symbol))
 	if ast.next == nil {
-		return append(agg, ast.val.symbol), nil
+		return append(agg, p.symbol), nil
 	} else {
-		return lambda_arglist(ast.next, append(agg, ast.val.symbol))
+		return lambda_arglist(ast.next, append(agg, p.symbol), bindings)
 	}
 }
 
@@ -254,7 +257,7 @@ func lambdafunc(ast *tree, bindings *env) (value, error) {
 	if ast.next.val.valtype != t_tree && ast.next.val.ast.val.valtype != t_symbol {
 		return blank_value(), errors.New(fmt.Sprintf("error: lambda arglist must be type_tree, given: %s", typenames[ast.next.val.valtype]))
 	}
-	if arglist, err := lambda_arglist(ast.next.val.ast, make([][]rune, 0)); err == nil {
+	if arglist, err := lambda_arglist(ast.next.val.ast, make([][]rune, 0), bindings); err == nil {
 		/*for _, r := range arglist {
 			fmt.Println("ss ", string(r))
 		}*/
@@ -317,7 +320,10 @@ func conv_float(symbol []rune) (float64, error) {
 }
 
 func bound(symbol []rune, bindings *env) (value, error) {
-	fmt.Println(bindings.values)
+	/*for k, u := range bindings.values {
+		fmt.Printf("%s: ", k)
+		print_value(u)
+	}*/
 	if val, ok := bindings.values[string(symbol)]; ok {
 		return val, nil
 	}
@@ -415,10 +421,10 @@ func performfunc(v value, bindings *env, subject *tree) (value, error) {
 
 	/* set the bindings inside our lambda to be the same as the outside ones
 	but overwrite the ones named in the varlist */
-	local_bindings := bindings.values
+	//local_bindings := bindings.values
 	if g, err := get_subjects(subject, make([]value, 0), bindings); err == nil && len(g) == len(v.function.args) {
 		for i, e := range v.function.args {
-			local_bindings[string(e)] = g[i]
+			bindings.values[string(e)] = g[i]
 		}
 	} else {
 		if err != nil {
@@ -427,7 +433,7 @@ func performfunc(v value, bindings *env, subject *tree) (value, error) {
 		fmt.Printf("len get_subjects = %d, len func.args = %d\n", len(g), len(v.function.args))
 		return blank_value(), errors.New("error: mismatched arg length for lambda")
 	}
-	return eval2(v.function.action, &env{local_bindings, nil})
+	return eval2(v.function.action, bindings)
 }
 
 /*func eval(ast *tree, bindings *env) (value, error) {
@@ -440,6 +446,121 @@ func topeval(ast *tree, bindings *env) value {
 	problem is that we need the bindings from each previous one
 	so make eval2 return bindings? */
 	return blank_value()
+}
+
+func evalfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (eval x)")
+	}
+	g, err := eval2(ast.next, bindings)
+	if err == nil {
+		if g.valtype == t_tree {
+			return eval2(g.ast, bindings)
+		}
+		return g, nil
+	} else {
+		return blank_value(), err
+	}
+}
+
+func carfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (car (list x[ y z ...]))")
+	}
+	/*if ast.next.val.valtype != t_tree {
+		return blank_value(), errors.New("error: car only accepts list")
+	}*/
+	if v, e := eval2(ast.next, bindings); e == nil && v.valtype == t_tree {
+		/*fmt.Printf("GGG ")
+		print_value(v.ast.val.ast.val)*/
+		return v.ast.val.ast.val, nil
+	} else {
+		return blank_value(), e
+	}
+	//return blank_value(), nil
+}
+
+func cdrfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (cdr (list x[ y z ...]))")
+	}
+	if v, e := eval2(ast.next, bindings); e == nil && v.valtype == t_tree {
+		if v.ast.val.ast.next == nil {
+			return blank_value(), errors.New("error: can only cdr a list with more than one value")
+		}
+		fmt.Printf("GGV ")
+		print_value(value_ast_init(&tree{value_ast_init(v.ast.val.ast.next), true, nil, nil}))
+		return value_ast_init(&tree{value_ast_init(v.ast.val.ast.next), true, nil, nil}), nil
+	} else {
+		return blank_value(), e
+	}
+}
+
+func let_binds(b *tree, names [][]rune, values []value, bindings *env) ([][]rune, []value, error) {
+	fmt.Println("from let_binds: ")
+	if b == nil {
+		for _, n := range names {
+			fmt.Println(string(n))
+		}
+		for _, v := range values {
+			print_value(v)
+			fmt.Println()
+		}
+		return names, values, nil
+	}
+	if b.val.valtype == t_tree {
+		print_tree(b.val.ast)
+		//print_value(b.ast)
+		if b.val.ast.val.valtype == t_symbol || b.val.ast.val.valtype == t_head_symbol {
+			if b.val.ast.next != nil {
+				if r, e := eval2(b.val.ast.next, bindings); e == nil {
+					return let_binds(b.next, append(names, b.val.ast.val.symbol), append(values, r), bindings)
+				} else {
+					return nil, nil, e
+				}
+			} else {
+				return nil, nil, errors.New(fmt.Sprintf("error: let binding must have value component; symbol: %s", b.val.ast.val.symbol))
+			}
+		} else {
+			return nil, nil, errors.New(fmt.Sprintf("error: let binding must bind to symbol, given type: %s", typenames[b.val.ast.val.valtype]))
+		}
+		return make([][]rune, 0), make([]value, 0), nil
+	} else {
+		return nil, nil, errors.New("error: expected a tree in let bind")
+	}
+}
+
+func bind_let(kvs *tree, bindings *env) (*env, error) {
+	names, values, err := let_binds(kvs.val.ast, nil, nil, bindings)
+	if err == nil {
+		for i, v := range names {
+			bindings.values[string(v)] = values[i]
+		}
+		return bindings, nil
+	} else {
+		return nil, err
+	}
+}
+
+func letfunc(ast *tree, bindings *env) (value, error) {
+	/* (let ((x 1) (b 2)) (+ x b)) */
+	if ast.next == nil || ast.next.next == nil {
+		return blank_value(), errors.New("usage: (let ((var1 val1)[ (val2 val2) ...]) function)")
+	}
+	fmt.Println("binds:")
+	print_tree(ast.next)
+	fmt.Println("function:")
+	print_tree(ast.next.next)
+	fmt.Println("bind_let:")
+	if v, e := bind_let(ast.next, bindings); e == nil {
+		fmt.Println("letfunc evaling")
+		fmt.Println("ast.next.next is ")
+		print_tree(ast.next.next)
+		return eval2(ast.next.next, v)
+	} else {
+		return blank_value(), e
+	}
+
 }
 
 func eval2(ast *tree, bindings *env) (value, error) {
@@ -457,6 +578,7 @@ func eval2(ast *tree, bindings *env) (value, error) {
 		fmt.Printf(" is %s\n", typenames[ast.val.valtype])
 		//print_tree(ast.val.ast)
 		if ast.val.ast.val.valtype == t_symbol || ast.val.ast.val.valtype == t_head_symbol {
+			fmt.Printf("ast.val.ast.val.valtype of %s is symbol/head symbol\n", string(ast.val.ast.val.symbol))
 			switch sym := string(ast.val.ast.val.symbol); sym {
 			case "quote":
 				fmt.Println("doing quote")
@@ -464,16 +586,29 @@ func eval2(ast *tree, bindings *env) (value, error) {
 			case "cons":
 				return consfunc(ast.val.ast, bindings, ast)
 			case "list":
-				return listfunc(ast.val.ast, bindings, ast)
+				if p, e := listfunc(ast.val.ast, bindings, ast); e == nil {
+					return value_ast_init(p), nil
+				} else {
+					return blank_value(), e
+				}
 			case "succ":
 				return succfunc(ast.val.ast, bindings)
 			case "+":
 				return addfunc(ast.val.ast, bindings)
 			case "lambda":
 				return lambdafunc(ast.val.ast, bindings)
+			case "eval":
+				return evalfunc(ast.val.ast, bindings)
+			case "car":
+				return carfunc(ast.val.ast, bindings)
+			case "cdr":
+				return cdrfunc(ast.val.ast, bindings)
+			case "let":
+				return letfunc(ast.val.ast, bindings)
 			default:
-				if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
-					return res, nil
+				fmt.Println("looking for ", string(ast.val.ast.val.symbol))
+				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
+					return eval2(&tree{value_ast_init(&tree{res, true, ast.val.ast.next, nil}), true, nil, nil}, bindings)
 				} else {
 					return blank_value(), finderr // couldn't find the x in (x y)
 				}
@@ -492,7 +627,7 @@ func eval2(ast *tree, bindings *env) (value, error) {
 		// like the y or z in (x y z)
 		// or any other symbol sent to evaluate
 		//symbols evaluate to numbers if they are numbers
-		fmt.Println("rsym is ", ast.val.symbol)
+		fmt.Println("rsym is ", string(ast.val.symbol))
 		fmt.Println(is_integer(rsym), is_float(rsym))
 		if is_integer(rsym) {
 			if v, err := conv_integer(rsym); err == nil {
@@ -600,13 +735,13 @@ func eval2(ast *tree, bindings *env) (value, error) {
 func print_value(v value) {
 	switch v.valtype {
 	case t_symbol, t_head_symbol:
-		fmt.Println(string(v.symbol))
+		fmt.Printf(string(v.symbol))
 	case t_tree:
 		print_tree(v.ast)
 	case t_number_float:
-		fmt.Printf("%f\n", v.number.floatval)
+		fmt.Printf("%f", v.number.floatval)
 	case t_number_int:
-		fmt.Printf("%d\n", v.number.intval)
+		fmt.Printf("%d", v.number.intval)
 	case t_function:
 		fmt.Printf("inputs: ")
 		for _, x := range v.function.args {
@@ -619,7 +754,7 @@ func print_value(v value) {
 
 func main() {
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
-	program := "((lambda (x y) (+ x y 13)) 19 3)"
+	program := "(let ((x (lambda (p z) (+ p 2 z))) (h 19)) (quote (+ (x h 4) h)))"
 	fmt.Println(program)
 	parse([]rune(program), 0, &my_tree)
 	//print_tree(&my_tree)
