@@ -790,6 +790,9 @@ func applyfunc(ast *tree, bindings *env) (value, error) {
 }
 
 func listdepth(ast *tree, i int64) int64 {
+	if ast == nil {
+		return 0
+	}
 	if ast.next == nil {
 		return i
 	}
@@ -865,6 +868,68 @@ func prependfunc(ast *tree, bindings *env) (value, error) {
 		}
 	} else {
 		return blank_value(), e0
+	}
+}
+
+func symisstring(sym []rune) bool {
+	if sym[0] == '"' && sym[len(sym)-1] == '"' {
+		return true
+	}
+	return false
+}
+
+func stringify(sym []rune) []rune {
+	return sym[1 : len(sym)-1]
+}
+
+func strindexfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (strindex \"my string\" n)")
+	}
+	if v, e := eval2(ast.next, bindings); e == nil {
+		if v.valtype == t_symbol || v.valtype == t_head_symbol {
+			if symisstring(v.symbol) {
+				if posv, e2 := eval2(ast.next.next, bindings); e2 == nil {
+					if posv.valtype == t_number_int {
+						if posv.number.intval < 0 || posv.number.intval > int64(len(stringify(v.symbol))-1) {
+							return blank_value(), errors.New(fmt.Sprintf("error: index %d for string %s out of range", posv.number.intval, string(v.symbol)))
+						}
+						g := make([]rune, 0)
+						g = append(g, stringify(v.symbol)[posv.number.intval])
+						return value_symbol_init(g), nil
+					} else {
+						return blank_value(), errors.New("error: second argument to strindex must be int")
+					}
+				} else {
+					return blank_value(), e2
+				}
+			} else {
+				return blank_value(), errors.New("error: first argument to strlen must be a symbol starting and ending with double quotes")
+			}
+		} else {
+			return blank_value(), errors.New("error: first argument to strlen must be a symbol")
+		}
+	} else {
+		return blank_value(), e
+	}
+}
+
+func strlenfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (strlen \"my string\")")
+	}
+	if v, e := eval2(ast.next, bindings); e == nil {
+		if v.valtype == t_symbol || v.valtype == t_head_symbol {
+			if symisstring(v.symbol) {
+				return value_number_int_init(int64(len(v.symbol) - 2)), nil
+			} else {
+				return blank_value(), errors.New("error: first argument to strlen must be a symbol starting and ending with double quotes")
+			}
+		} else {
+			return blank_value(), errors.New("error: first argument to strlen must be a symbol")
+		}
+	} else {
+		return blank_value(), e
 	}
 }
 
@@ -946,6 +1011,10 @@ func eval2(ast *tree, bindings *env) (value, error) {
 				return appendfunc(ast.val.ast, bindings)
 			case "prepend":
 				return prependfunc(ast.val.ast, bindings)
+			case "strlen":
+				return strlenfunc(ast.val.ast, bindings)
+			case "strindex":
+				return strindexfunc(ast.val.ast, bindings)
 			default:
 				//fmt.Println("looking for ", string(ast.val.ast.val.symbol))
 				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
