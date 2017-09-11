@@ -787,6 +787,28 @@ func applyfunc(ast *tree, bindings *env) (value, error) {
 	return blank_value(), nil
 }
 
+func listdepth(ast *tree, i int64) int64 {
+	if ast.next == nil {
+		return i
+	}
+	return listdepth(ast.next, i+1)
+}
+
+func lenfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (len (list x[ y z ...]))")
+	}
+	if v, e := eval2(ast.next, bindings); e == nil {
+		if v.valtype == t_tree {
+			return value_number_int_init(listdepth(v.ast.val.ast, 1)), nil
+		} else {
+			return blank_value(), errors.New("error: lenfunc must be called on a list")
+		}
+	} else {
+		return blank_value(), e
+	}
+}
+
 /* perhaps eval can be improved to evaluate a sequence of trees
 like (x 1) (b 2) because at the moment it only evaluates (x 1) and then stops.
 
@@ -857,6 +879,8 @@ func eval2(ast *tree, bindings *env) (value, error) {
 				return modfunc(ast.val.ast, bindings)
 			case "apply":
 				return applyfunc(ast.val.ast, bindings)
+			case "len":
+				return lenfunc(ast.val.ast, bindings)
 			default:
 				fmt.Println("looking for ", string(ast.val.ast.val.symbol))
 				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
@@ -1008,7 +1032,7 @@ func print_value(v value) {
 
 func main() {
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
-	program := "(apply succ (list 1 2))"
+	program := "(len (list 1 2 3 4 5 6 7))"
 	fmt.Println(program)
 	parse([]rune(program), 0, &my_tree)
 	//print_tree(&my_tree)
