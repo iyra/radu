@@ -779,7 +779,6 @@ func applyfunc(ast *tree, bindings *env) (value, error) {
 	}
 	if l, e := eval2(ast.next.next, bindings); e == nil {
 		if l.ast != nil {
-			print_tree(l.ast)
 			return eval2(&tree{value_ast_init(&tree{ast.next.val, true, l.ast.val.ast, nil}), true, nil, nil}, bindings)
 		} else {
 			return blank_value(), errors.New("error: second argument to apply must be list")
@@ -809,6 +808,44 @@ func lenfunc(ast *tree, bindings *env) (value, error) {
 		}
 	} else {
 		return blank_value(), e
+	}
+}
+
+func lastinlist(ast *tree) *tree {
+	if ast == nil {
+		// empty list
+		return ast
+	}
+	if ast.next == nil {
+		return ast
+	}
+	return lastinlist(ast.next)
+}
+
+func appendfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil || ast.next.next == nil {
+		return blank_value(), errors.New("usage: (append item (list x[ y z ...]))")
+	}
+	if av, e0 := eval2(ast.next, bindings); e0 == nil {
+		if v, e := eval2(ast.next.next, bindings); e == nil {
+			if v.valtype == t_tree {
+				lastptr := lastinlist(v.ast.val.ast)
+				fmt.Println("lastptr is")
+				print_tree(lastptr)
+				if lastptr != nil {
+					lastptr.next = &tree{av, true, nil, nil}
+				} else {
+					return value_ast_init(&tree{value_ast_init(&tree{av, true, nil, nil}), true, nil, nil}), nil
+				}
+				return v, nil
+			} else {
+				return blank_value(), errors.New("error: second argument to append must be list")
+			}
+		} else {
+			return blank_value(), e
+		}
+	} else {
+		return blank_value(), e0
 	}
 }
 
@@ -886,6 +923,8 @@ func eval2(ast *tree, bindings *env) (value, error) {
 				return applyfunc(ast.val.ast, bindings)
 			case "len":
 				return lenfunc(ast.val.ast, bindings)
+			case "append":
+				return appendfunc(ast.val.ast, bindings)
 			default:
 				//fmt.Println("looking for ", string(ast.val.ast.val.symbol))
 				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
