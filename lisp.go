@@ -178,7 +178,7 @@ func print_tree(ast *tree) {
 		}
 		fmt.Printf("[%s]", typenames[ast.val.valtype])
 		if ast.next != nil {
-			fmt.Printf(" ")
+			fmt.Printf("->")
 			print_tree(ast.next)
 		}
 	} else {
@@ -718,7 +718,7 @@ func isfalse(v value, bindings *env) (bool, error) {
 func istrue(v value, bindings *env) (bool, error) {
 	if p, e := isfalse(v, bindings); e == nil {
 		if !p {
-			print_value(v)
+			//print_value(v)
 			//fmt.Println("is true!")
 			return true, nil
 		}
@@ -921,7 +921,7 @@ func strlenfunc(ast *tree, bindings *env) (value, error) {
 	if v, e := eval2(ast.next, bindings); e == nil {
 		if v.valtype == t_symbol || v.valtype == t_head_symbol {
 			if symisstring(v.symbol) {
-				return value_number_int_init(int64(len(v.symbol) - 2)), nil
+				return value_number_int_init(int64(len(stringify(v.symbol)))), nil
 			} else {
 				return blank_value(), errors.New("error: first argument to strlen must be a symbol starting and ending with double quotes")
 			}
@@ -930,6 +930,96 @@ func strlenfunc(ast *tree, bindings *env) (value, error) {
 		}
 	} else {
 		return blank_value(), e
+	}
+}
+
+/* cat -> tree lol */
+func cat(ast *tree, bindings *env, ret []rune) ([]rune, error) {
+	if ast.next == nil {
+		//fmt.Println("length of ret is ", len(ret))
+		u := make([]rune, 1)
+		u[0] = '"'
+		for _, x := range ret {
+			u = append(u, x)
+		}
+		u = append(u, '"')
+		return u, nil
+	}
+	if v, e := eval2(ast.next, bindings); e == nil {
+		if v.valtype == t_symbol || v.valtype == t_head_symbol {
+			if symisstring(v.symbol) {
+				//g := ret+v.symbol
+				//ret = make([]rune, len(v.symbol)+len(ret))
+				for _, r := range stringify(v.symbol) {
+					ret = append(ret, r)
+				}
+				return cat(ast.next, bindings, ret)
+			} else {
+				return ret, errors.New("error: first argument to strlen must be a symbol starting and ending with double quotes")
+			}
+		} else {
+			return ret, errors.New("error: first argument to strlen must be a symbol")
+		}
+	} else {
+		return ret, e
+	}
+}
+
+func strcatfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil || ast.next.next == nil {
+		return blank_value(), errors.New("usage: (strcat \"str1\" \"str2\"[ \"str3\" ...])")
+	}
+	if result, e := cat(ast, bindings, make([]rune, 0)); e == nil {
+		//fmt.Println(string(result))
+		return value_symbol_init(result), nil
+	} else {
+		return blank_value(), e
+	}
+	return blank_value(), nil
+}
+
+func intfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil {
+		return blank_value(), errors.New("usage: (int value)")
+	}
+	if v, e := eval2(ast.next, bindings); e == nil {
+		switch v.valtype {
+		case t_symbol:
+			if symisstring(v.symbol) {
+				if len(stringify(v.symbol)) == 1 {
+					return value_number_int_init(int64(stringify(v.symbol)[0])), nil
+				}
+			}
+		}
+	}
+	return blank_value(), nil
+}
+
+func collect_bools(ast *tree, bindings *env, ret []bool) ([]bool, error) {
+	if b, e := istrue(ast.val, bindings); e == nil {
+		if ast.next != nil {
+			return collect_bools(ast.next, bindings, append(ret, b))
+		} else {
+			return append(ret, b), nil
+		}
+	} else {
+		return nil, e
+	}
+}
+
+func nandfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil || ast.next.next == nil {
+		return blank_value(), errors.New("usage: (nand bool1 bool2[ bool3 bool4 ...])")
+	}
+	if bs, e := collect_bools(ast.next, bindings, make([]bool, 0)); e == nil {
+		for _, b := range bs {
+			if !b {
+				return truesym(), nil
+			}
+		}
+		return falsesym(), nil
+	} else {
+		return falsesym(), e
 	}
 }
 
@@ -1015,6 +1105,12 @@ func eval2(ast *tree, bindings *env) (value, error) {
 				return strlenfunc(ast.val.ast, bindings)
 			case "strindex":
 				return strindexfunc(ast.val.ast, bindings)
+			case "strcat":
+				return strcatfunc(ast.val.ast, bindings)
+			case "int":
+				return intfunc(ast.val.ast, bindings)
+			case "nand":
+				return nandfunc(ast.val.ast, bindings)
 			default:
 				//fmt.Println("looking for ", string(ast.val.ast.val.symbol))
 				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
