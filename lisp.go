@@ -849,6 +849,25 @@ func appendfunc(ast *tree, bindings *env) (value, error) {
 	}
 }
 
+func prependfunc(ast *tree, bindings *env) (value, error) {
+	if ast.next == nil || ast.next.next == nil {
+		return blank_value(), errors.New("usage: (prepend item (list x[ y z ...]))")
+	}
+	if av, e0 := eval2(ast.next, bindings); e0 == nil {
+		if v, e := eval2(ast.next.next, bindings); e == nil {
+			if v.valtype == t_tree {
+				return value_ast_init(&tree{value_ast_init(&tree{av, true, v.ast.val.ast, nil}), true, nil, nil}), nil
+			} else {
+				return blank_value(), errors.New("error: second argument to append must be list")
+			}
+		} else {
+			return blank_value(), e
+		}
+	} else {
+		return blank_value(), e0
+	}
+}
+
 //func intfunc(ast *tree, bindings *env) (value, error)
 
 /* perhaps eval can be improved to evaluate a sequence of trees
@@ -925,6 +944,8 @@ func eval2(ast *tree, bindings *env) (value, error) {
 				return lenfunc(ast.val.ast, bindings)
 			case "append":
 				return appendfunc(ast.val.ast, bindings)
+			case "prepend":
+				return prependfunc(ast.val.ast, bindings)
 			default:
 				//fmt.Println("looking for ", string(ast.val.ast.val.symbol))
 				if res, finderr := bound(ast.val.ast.val.symbol, bindings); finderr == nil {
