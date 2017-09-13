@@ -1213,6 +1213,8 @@ func dofor(ast *tree, bindings *env) (value, error) {
 
 func funcdex(symbol []rune, ast *tree, bindings *env) (value, error) {
 	switch sym := string(symbol); sym {
+	case "quit", "exit":
+		os.Exit(0)
 	case "quote":
 		//fmt.Println("doing quote")
 		return quotefunc(ast, bindings)
@@ -1605,13 +1607,13 @@ func repl(b *env) {
 	fmt.Printf("radu> ")
 	text, _ := reader.ReadString('\n')
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
-	program := text[:len(text)-1]
+	program := text[:len(text)-1] // trim off the last character because it's a \n
 	parse([]rune(program), 0, &my_tree, make([]rune, 0))
 	r, err := prognfunc(&my_tree, b)
 	if err == nil {
 		print_value(r)
 	} else {
-		fmt.Printf(err)
+		fmt.Printf(err.Error())
 	}
 
 	//print_tree(&my_tree)
