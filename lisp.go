@@ -345,11 +345,11 @@ func conv_float(symbol []rune) (float64, error) {
 }
 
 func bound(symbol []rune, bindings *env) (value, error) {
-	for k, u := range bindings.values {
+	/*for k, u := range bindings.values {
 		fmt.Printf("%s: ", k)
 		print_value(u)
 		fmt.Println()
-	}
+	}*/
 	if val, ok := bindings.values[string(symbol)]; ok {
 		return val, nil
 	}
@@ -559,7 +559,7 @@ func get_subjects(subject *tree, results []value, bindings *env) ([]value, error
 }
 
 func performfunc(v value, bindings *env, subject *tree) (value, error) {
-	print_value(v)
+	//print_value(v)
 
 	/* set the bindings inside our lambda to be the same as the outside ones
 	but overwrite the ones named in the varlist */
@@ -1184,7 +1184,7 @@ func applyeach(fn value, l *tree, b *env, acc []value) ([]value, error) {
 }
 
 func dofor(ast *tree, bindings *env) (value, error) {
-	if ast.next != nil || ast.next.next != nil {
+	if ast.next != nil && ast.next.next != nil {
 		if fn, ev := eval2(ast.next, bindings); ev == nil {
 			print_value(fn)
 			if v, e0 := eval2(ast.next.next, bindings); e0 == nil {
@@ -1211,10 +1211,28 @@ func dofor(ast *tree, bindings *env) (value, error) {
 	}
 }
 
+func definefunc(ast *tree, bindings *env) (value, error) {
+	if ast.next != nil && ast.next.next != nil {
+		if ast.next.val.valtype != t_symbol {
+			return blank_value(), errors.New(fmt.Sprintf("error: define can't bind to a non-symbol (%s)", typenames[ast.next.val.valtype]))
+		}
+		if g, e0 := eval2(ast.next.next, bindings); e0 == nil {
+			bindings.prev.values[string(ast.next.val.symbol)] = g
+			return blank_value(), nil
+		} else {
+			return blank_value(), e0
+		}
+	} else {
+		return blank_value(), errors.New("usage: (define my-symbol value)")
+	}
+}
+
 func funcdex(symbol []rune, ast *tree, bindings *env) (value, error) {
 	switch sym := string(symbol); sym {
 	case "quit", "exit":
 		os.Exit(0)
+	case "define":
+		return definefunc(ast, &env{make(map[string]value), bindings})
 	case "quote":
 		//fmt.Println("doing quote")
 		return quotefunc(ast, bindings)
@@ -1248,10 +1266,7 @@ func funcdex(symbol []rune, ast *tree, bindings *env) (value, error) {
 	case "cadr":
 		return cadrfunc(ast, bindings)
 	case "let":
-		v, e := letfunc(ast, bindings)
-		fmt.Println(bindings)
-		bindings = bindings.prev
-		fmt.Println(bindings)
+		v, e := letfunc(ast, &env{make(map[string]value), bindings})
 		return v, e
 	case "progn":
 		/* progn has to be like this because we call it instead of eval
@@ -1287,9 +1302,10 @@ func funcdex(symbol []rune, ast *tree, bindings *env) (value, error) {
 		return nandfunc(ast, bindings)
 	default:
 		fmt.Println("GUNVGUN")
-		print_tree(ast.val.ast)
 		fmt.Println("looking for ", string(ast.val.symbol))
 		if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
+			print_value(res)
+			print_tree(&tree{value_ast_init(&tree{res, true, ast.next, nil}), true, nil, nil})
 			return eval2(&tree{value_ast_init(&tree{res, true, ast.next, nil}), true, nil, nil}, bindings)
 		} else {
 			return blank_value(), finderr // couldn't find the x in (x y)
@@ -1321,19 +1337,21 @@ func quoted_sym(sym []rune) (bool, []rune) {
 
 func eval2(ast *tree, bindings *env) (value, error) {
 	/*
-				1. ast = (fn arg1 arg2 arg3 ...) => call fnfunc() with ast
-					2. ((fn arg1 arg2 arg3 ...) ext1 ext2 ext3) => evaluate ast.next then if ast.next is a lambda then performfunc, else fnfunc() lookup
-					3. 'sym => produce sym
-					4. 3 => produce int 3
-					5. 3.0 => produce int 3.0
-					6. 3/5 => produce rational 3/5
-					7. '3 => produce int 3
-					8. '3.0 => produce float 3.0
-					9. '3/5 => produce rational 3/5
-					10. sym => if sym fits pattern of a number then return number value, otherwise lookup sym and return value
-					11. '(arg1 arg2 arg3) => treat like (list 'arg1 'arg2 'arg3)
-		12. - => return symbol -
-	13. fn => return fn*/
+						1. ast = (fn arg1 arg2 arg3 ...) => call fnfunc() with ast
+							2. ((fn arg1 arg2 arg3 ...) ext1 ext2 ext3) => evaluate ast.next then if ast.next is a lambda then performfunc, else fnfunc() lookup
+							3. 'sym => produce sym
+							4. 3 => produce int 3
+							5. 3.0 => produce int 3.0
+							6. 3/5 => produce rational 3/5
+							7. '3 => produce int 3
+							8. '3.0 => produce float 3.0
+							9. '3/5 => produce rational 3/5
+							10. sym => if sym fits pattern of a number then return number value, otherwise lookup sym and return value
+							11. '(arg1 arg2 arg3) => treat like (list 'arg1 'arg2 'arg3)
+				12. - => return symbol -
+			13. fn => return fn
+		14. #t => #t
+		15. #f => #f */
 
 	if ast.val.valtype == t_tree {
 		if ast.val.ast != nil {
@@ -1352,7 +1370,8 @@ func eval2(ast *tree, bindings *env) (value, error) {
 						if af.valtype == t_function {
 							// a lambda
 							fmt.Println("lambdaing")
-							return performfunc(af, bindings, ast.val.ast.next)
+							y, u := performfunc(af, &env{make(map[string]value, 0), bindings}, ast.val.ast.next)
+							return y, u
 						}
 						if af.valtype == t_symbol {
 							// a symbol
@@ -1361,6 +1380,12 @@ func eval2(ast *tree, bindings *env) (value, error) {
 					} else {
 						return blank_value(), e
 					}
+				}
+
+				if ast.val.ast.val.valtype == t_function {
+					fmt.Println("got a tree")
+					y, u := performfunc(ast.val.ast.val, &env{make(map[string]value, 0), bindings}, ast.val.ast.next)
+					return y, u
 				}
 			} else {
 				// case 11
@@ -1420,6 +1445,12 @@ func eval2(ast *tree, bindings *env) (value, error) {
 		if res, finderr := bound(ast.val.symbol, bindings); finderr == nil {
 			return res, nil
 		} else {
+			if p, e3 := equalvals(ast.val, truesym(), bindings); e3 == nil && p {
+				return ast.val, nil
+			}
+			if p, e3 := equalvals(ast.val, falsesym(), bindings); e3 == nil && p {
+				return ast.val, nil
+			}
 			return blank_value(), finderr
 		}
 	}
@@ -1622,7 +1653,7 @@ func repl(b *env) {
 }
 
 func main() {
-	me := env{make(map[string]value), nil}
+	me := env{make(map[string]value), &env{make(map[string]value), nil}}
 	repl(&me)
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
 	program := "(len (list (list 1 4) 2 3 4 5 6 7))"
