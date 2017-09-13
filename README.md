@@ -47,5 +47,7 @@ Literally none, except for `go`; you can compile by doing `go build lisp.go`. Th
 ## License
 
 Copyright (C) Iyra Gaura 2017
+
 Licensed under the CC0 Public Domain Dedication: https://creativecommons.org/publicdomain/zero/1.0/
+
 You are free to use it as you like therefore, but I would appreciate an e-mail or mention if you use it for something cool.
