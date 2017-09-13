@@ -117,63 +117,86 @@ func value_function_init(args [][]rune, action *tree) value {
 	return value{make([]rune, 0), t_function, make([]rune, 0), nil, number_value{0, 0, rational{0, 0}}, function_value{args, action}}
 }
 
-func parse(input []rune, n int, ast *tree, dec []rune) int {
+func parse(input []rune, n int, ast *tree, dec []rune, in_str bool) int {
 	if n == len(input) {
 		//fmt.Printf("done")
 	} else {
 		switch c := input[n]; c {
 		case '(':
-			if ast.done_val {
-				// value has finished collecting
-				// now collect arguments
-				//tree { value { make([]rune, 0), nil }, false, nil};
-				// just move on because we do the tree allocation and nexting with ' '
-				parse(input, n+1, ast, dec)
-			} else {
-				if len(ast.val.symbol) == 0 {
-					// case like ((... so parse
-					ast.val.decorations = dec
-					ast.val.valtype = t_tree
-					ast.val.ast = &tree{value_symbol_init(make([]rune, 0)), false, nil, ast}
-					parse(input, n+1, ast.val.ast, make([]rune, 0))
+			if !in_str {
+				if ast.done_val {
+					// value has finished collecting
+					// now collect arguments
+					//tree { value { make([]rune, 0), nil }, false, nil};
+					// just move on because we do the tree allocation and nexting with ' '
+					parse(input, n+1, ast, dec, false)
 				} else {
-					fmt.Printf("error: unexpected ( in tree value\n")
+					if len(ast.val.symbol) == 0 {
+						// case like ((... so parse
+						ast.val.decorations = dec
+						ast.val.valtype = t_tree
+						ast.val.ast = &tree{value_symbol_init(make([]rune, 0)), false, nil, ast}
+						parse(input, n+1, ast.val.ast, make([]rune, 0), false)
+					} else {
+						fmt.Printf("error: unexpected ( in tree value\n")
+					}
 				}
+			} else {
+				ast.val.symbol = append(ast.val.symbol, input[n])
+				parse(input, n+1, ast, dec, true)
 			}
 			break
 		case ')':
-			ast.done_val = true
-			if ast.parent != nil {
-				return parse(input, n+1, ast.parent, make([]rune, 0))
+			if !in_str {
+				ast.done_val = true
+				if ast.parent != nil {
+					return parse(input, n+1, ast.parent, make([]rune, 0), false)
+				}
+			} else {
+				ast.val.symbol = append(ast.val.symbol, input[n])
+				parse(input, n+1, ast, dec, true)
 			}
 			break
 		case ' ', '\n':
-			if !ast.done_val {
-				ast.done_val = true
-			}
-			if n+1 != len(input) {
-				// finish off the last item
-				ast.next = &tree{value_symbol_init(make([]rune, 0)), false, nil, ast.parent}
-				if input[n+1] != ' ' {
-					// get next argument
-					parse(input, n+1, ast.next, make([]rune, 0))
-				} else {
-					for g := n; g < len(input); g++ {
-						if input[g] != ' ' {
-							parse(input, g, ast.next, make([]rune, 0))
-							break
+			if !in_str {
+				fmt.Println("not in string")
+				if !ast.done_val {
+					ast.done_val = true
+				}
+				if n+1 != len(input) {
+					// finish off the last item
+					ast.next = &tree{value_symbol_init(make([]rune, 0)), false, nil, ast.parent}
+					if input[n+1] != ' ' {
+						// get next argument
+						parse(input, n+1, ast.next, make([]rune, 0), false)
+					} else {
+						for g := n; g < len(input); g++ {
+							if input[g] != ' ' {
+								parse(input, g, ast.next, make([]rune, 0), false)
+								break
+							}
 						}
 					}
 				}
+			} else {
+				fmt.Println("appending to ", ast.val.symbol)
+				ast.val.symbol = append(ast.val.symbol, input[n])
+				parse(input, n+1, ast, dec, true)
 			}
 			break
 		default:
 			if len(ast.val.symbol) == 0 && (input[n] == ',' || input[n] == '\'' || input[n] == '`' || input[n] == '@') {
 				ast.val.decorations = append(ast.val.decorations, input[n])
-				parse(input, n+1, ast, append(dec, input[n])) // set the next thing to be escaped, whatever it is
+				parse(input, n+1, ast, append(dec, input[n]), false) // set the next thing to be escaped, whatever it is
 			} else {
 				ast.val.symbol = append(ast.val.symbol, input[n])
-				parse(input, n+1, ast, dec)
+				if len(ast.val.symbol) == 0 && input[n] == '"' {
+					in_str = true
+				}
+				if len(ast.val.symbol) > 0 && input[n] == '"' {
+					in_str = false
+				}
+				parse(input, n+1, ast, dec, in_str)
 			}
 		}
 	}
@@ -840,8 +863,12 @@ func isfalse(v value, bindings *env) (bool, error) {
 	if v.valtype == t_symbol {
 		if g, e := equalvals(v, falsesym(), bindings); e == nil {
 			if g {
+				print_value(v)
+				fmt.Println(" is false")
 				return true, nil
 			}
+			print_value(v)
+			fmt.Println(" is true")
 			return false, nil
 		} else {
 			return false, e
@@ -1131,22 +1158,29 @@ func intfunc(ast *tree, bindings *env) (value, error) {
 }
 
 func collect_bools(ast *tree, bindings *env, ret []bool) ([]bool, error) {
-	if b, e := istrue(ast.val, bindings); e == nil {
-		if ast.next != nil {
-			return collect_bools(ast.next, bindings, append(ret, b))
+	if v, e0 := eval2(ast, bindings); e0 == nil {
+		if b, e := istrue(v, bindings); e == nil {
+			if ast.next != nil {
+				return collect_bools(ast.next, bindings, append(ret, b))
+			} else {
+				return append(ret, b), nil
+			}
 		} else {
-			return append(ret, b), nil
+			return nil, e
 		}
 	} else {
-		return nil, e
+		return nil, e0
 	}
 }
 
 func nandfunc(ast *tree, bindings *env) (value, error) {
+	fmt.Println("nanding")
+	print_tree(ast)
 	if ast.next == nil || ast.next.next == nil {
 		return blank_value(), errors.New("usage: (nand bool1 bool2[ bool3 bool4 ...])")
 	}
 	if bs, e := collect_bools(ast.next, bindings, make([]bool, 0)); e == nil {
+		fmt.Println(bs)
 		for _, b := range bs {
 			if !b {
 				return truesym(), nil
@@ -1446,10 +1480,12 @@ func eval2(ast *tree, bindings *env) (value, error) {
 			return res, nil
 		} else {
 			if p, e3 := equalvals(ast.val, truesym(), bindings); e3 == nil && p {
-				return ast.val, nil
+				fmt.Println("evaling to true")
+				return truesym(), nil
 			}
 			if p, e3 := equalvals(ast.val, falsesym(), bindings); e3 == nil && p {
-				return ast.val, nil
+				fmt.Println("evaling to false")
+				return falsesym(), nil
 			}
 			return blank_value(), finderr
 		}
@@ -1639,7 +1675,7 @@ func repl(b *env) {
 	text, _ := reader.ReadString('\n')
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
 	program := text[:len(text)-1] // trim off the last character because it's a \n
-	parse([]rune(program), 0, &my_tree, make([]rune, 0))
+	parse([]rune(program), 0, &my_tree, make([]rune, 0), false)
 	r, err := prognfunc(&my_tree, b)
 	if err == nil {
 		print_value(r)
@@ -1658,7 +1694,7 @@ func main() {
 	my_tree := tree{value_symbol_init(make([]rune, 0)), false, nil, nil}
 	program := "(len (list (list 1 4) 2 3 4 5 6 7))"
 	fmt.Println(program)
-	parse([]rune(program), 0, &my_tree, make([]rune, 0))
+	parse([]rune(program), 0, &my_tree, make([]rune, 0), false)
 	//print_tree(&my_tree)
 	fmt.Println("\nEval: ")
 	r, err := prognfunc(&my_tree, &env{make(map[string]value), nil})
