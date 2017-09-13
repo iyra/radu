@@ -44,6 +44,10 @@ An implementation of language which shares many features similar to Common Lisp/
 
 Literally none, except for `go`; you can compile by doing `go build lisp.go`. The resulting binary is compatible with `gdb` if you need to do any debugging.
 
+## Credits
+
+Thanks to Ioannis Panagiotis Koutsidis for helping me sort out the behaviour of quote, the idea behind the parser, the environment structure, how to make let and lambda bindings non-persistent and how to make define bindings persistent only to their scope, and general suggestions and debugging advice.
+
 ## License
 
 Copyright (C) Iyra Gaura 2017
