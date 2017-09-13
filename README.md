@@ -3,13 +3,14 @@
 ## What?
 An implementation of language which shares many features similar to Common Lisp/Scheme, though it does not try to emulate either.
 
-## What works
+## What works (and a guide for those new to the Lisp language family)
 
 * A value is anything in the language, for example `5` is a value, so is `(1 2)` and so is `(lambda (x) (+ x 3))` etc.; evaluating a value always produces a value. Some values evaluate to themselves, for example a number always evaluates to the same number.
 * Mentioning a non-number, non-string value that isn't bound (such as by `let`, `lambda`, `define`) will try to find the value in the environment, and if it can't, it will give you an error.
-* `(lambda (var1 var2) value)` will define an anonymous function which takes one or more arguments (in this case,  two); for example, for a function called "adder" which just adds two numbers, one might have a lambda like: `(lambda adder (x y) (+ x y))`
+* Doing `(x y)` will attempt to run the function `x` on the argument `y`, similarly with multiple arguments. So giving radu `(5 22)` is nonsensical - why? Because 5 isn't a function. A function can also take no arguments, in which case it will look like `(x)`.
+* `(lambda (var1 var2) value)` will define an anonymous function which takes one or more arguments (in this case,  two); for example, for a function called "adder" which just adds two numbers, one might have a lambda like: `(lambda adder (x y) (+ x y))`. A lambda will just produce a function, so it's not much use on its own. Because it produces a function, you can use it like: `((lambda adder (x y) (+ x y)) 3 2) where 3 and 2 are the arguments. This will produce 5 in this example.
 * `(define identifier value)` will define a variable to be accessed within the current scope but (hopefully) not outside it. User-defined  functions are actually `lambda`s, so you can name your functions like this. There is no separate way to define functions. You can use `define` to re-define things you've already defined.
-* `(list a b c)` will create a list, in this case with three values but you can have more or less or even zero (`(list)`); each of the items is evaluated before the list is given to you.
+* `(list a b c)` will create a list, in this case with three values but you can have more or less or even zero (`(list)`); each of the items is evaluated before the list is given to you. A list looks like `(a b c)` but do not mistake this for the function `a` calling the arguments `b` and `c`. It will only do that if you *evaluate* `(a b c)`. So `(eval (list my-function arg1 arg2))` will run `(my-function arg1 arg2)` as mentioned in the third bullet point.
 * `(car my-list)` will get the first item of the list `my-list`. It only works on lists. If `my-list` were `(list a b c)` then `car` would return `a`
 * `(cdr my-list)` will get the rest of a list; to use the list defined above again, it would produce `(b c)`
 * `(succ number)` will return number+1; it's only valid for numbers, though.
